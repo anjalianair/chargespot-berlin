@@ -36,6 +36,21 @@ services:
     ports:
       - "9000:9000"
 
+  api:
+    build:
+      context: ./api
+    container_name: chargespot-api
+
+    environment:
+      DATABASE_URL: postgresql://chargespot:development_password@db:5432/chargespot
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    ports:
+      - "8000:8000"
+
 volumes:
   postgis_data:
   
