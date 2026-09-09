@@ -4,6 +4,7 @@ import psycopg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.analysis import router as analysis_router
 from app.auth import router as auth_router
 from app.proposals import router as proposals_router
 
@@ -15,6 +16,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(proposals_router)
+app.include_router(analysis_router)
 
 app.add_middleware(
     CORSMiddleware,
