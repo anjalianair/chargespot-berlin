@@ -5,15 +5,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_router
+from app.proposals import router as proposals_router
+
+
 app = FastAPI(
     title="ChargeSpot Berlin API",
     version="1.0.0",
 )
+
 app.include_router(auth_router)
+app.include_router(proposals_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,7 +32,7 @@ DATABASE_URL = os.getenv(
 )
 
 
-@app.get("/api/health")
+@app.get("/api/health", tags=["System"])
 def health():
     with psycopg.connect(DATABASE_URL) as connection:
         with connection.cursor() as cursor:
