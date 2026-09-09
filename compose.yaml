@@ -4,9 +4,9 @@ services:
     container_name: chargespot-db
 
     environment:
-      POSTGRES_DB: chargespot
-      POSTGRES_USER: chargespot
-      POSTGRES_PASSWORD: development_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
     ports:
       - "5432:5432"
@@ -15,7 +15,11 @@ services:
       - postgis_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chargespot -d chargespot"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,7 +29,7 @@ services:
     container_name: chargespot-features
 
     environment:
-      DATABASE_URL: postgres://chargespot:development_password@db:5432/chargespot?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
       PGFS_METADATA_TITLE: ChargeSpot Berlin Feature Service
       PGFS_DATABASE_TABLEINCLUDES: api.charging_station_public,api.district_public
 
@@ -42,8 +46,8 @@ services:
     container_name: chargespot-api
 
     environment:
-      DATABASE_URL: postgresql://chargespot:development_password@db:5432/chargespot
-      JWT_SECRET_KEY: chargespot-local-development-secret-2026
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
 
     depends_on:
       db:
