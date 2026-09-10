@@ -420,3 +420,154 @@ body {
 .auth-panel .section-label {
   margin-top: 0;
 }
+.proposal-panel,
+.proposal-manager {
+  padding: 22px;
+  border: 1px solid #d6d9eb;
+  border-radius: 14px;
+  background: #fafaff;
+}
+
+.proposal-panel h3,
+.proposal-manager h3 {
+  margin: 8px 0 14px;
+  color: #123650;
+}
+
+.proposal-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.proposal-form label {
+  display: grid;
+  gap: 6px;
+  color: #385667;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.proposal-form input,
+.proposal-form textarea,
+.proposal-form select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid #b9c6d4;
+  border-radius: 8px;
+  color: #123650;
+  background: #ffffff;
+  font: inherit;
+}
+
+.proposal-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.proposal-form input:focus,
+.proposal-form textarea:focus,
+.proposal-form select:focus {
+  border-color: #7c3aed;
+  outline: 3px solid rgb(124 58 237 / 14%);
+}
+
+.proposal-list {
+  display: grid;
+  gap: 12px;
+}
+
+.proposal-card {
+  position: relative;
+  padding: 16px;
+  border: 1px solid #ddd6fe;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.proposal-card > strong {
+  display: block;
+  padding-right: 76px;
+  color: #123650;
+  line-height: 1.4;
+}
+
+.proposal-card > p {
+  margin: 10px 0 14px;
+  color: #526f7e;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.proposal-status {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #5b21b6;
+  background: #ede9fe;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.proposal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.proposal-actions button {
+  width: 100%;
+}
+
+.danger-button {
+  padding: 10px 14px;
+  border: 1px solid #c2413b;
+  border-radius: 8px;
+  color: #a12420;
+  background: #fff7f6;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  color: #ffffff;
+  background: #b8322d;
+}
+
+.danger-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.form-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #245f49;
+  background: #e8f7ef;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.form-message.error {
+  color: #8f2925;
+  background: #fff0ef;
+}
+
+.form-message.success {
+  color: #245f49;
+  background: #e8f7ef;
+}
+
+.saved-proposal-symbol {
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #7c3aed;
+  box-shadow: 0 0 0 1px #7c3aed;
+}
+

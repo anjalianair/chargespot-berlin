@@ -30,7 +30,9 @@ import "leaflet/dist/leaflet.css";
 import "./App.css";
 
 import AuthPanel from "./components/AuthPanel";
+import ProposalManager from "./components/ProposalManager";
 import ProposalPanel from "./components/ProposalPanel";
+
 import {
   findNearestStation,
   getMyProposals,
@@ -64,9 +66,9 @@ type CandidateAnalysis = {
 
 type CandidateResult = {
   analysis: CandidateAnalysis;
-  coverageBuffer: Feature<
-    Polygon | MultiPolygon
-  > | null;
+  coverageBuffer:
+    | Feature<Polygon | MultiPolygon>
+    | null;
 };
 
 type ServerStatus =
@@ -79,26 +81,29 @@ function MapResizeHandler() {
   const map = useMap();
 
   useEffect(() => {
-    const updateSize = () => map.invalidateSize();
+    const resizeMap = () => {
+      map.invalidateSize();
+    };
 
     const firstTimer = window.setTimeout(
-      updateSize,
+      resizeMap,
       100,
     );
 
     const secondTimer = window.setTimeout(
-      updateSize,
+      resizeMap,
       500,
     );
 
-    window.addEventListener("resize", updateSize);
+    window.addEventListener("resize", resizeMap);
 
     return () => {
       window.clearTimeout(firstTimer);
       window.clearTimeout(secondTimer);
+
       window.removeEventListener(
         "resize",
-        updateSize,
+        resizeMap,
       );
     };
   }, [map]);
@@ -159,43 +164,38 @@ function addStationPopup(
 ) {
   const properties = feature.properties ?? {};
 
+  const name =
+    properties.name ?? "Charging station";
+
+  const operator = properties.operator;
+  const chargerType = properties.charger_type;
+  const power = properties.power_kw;
+  const address = properties.address;
+
   layer.bindPopup(`
     <div class="map-popup">
       <strong>
-        ${displayValue(
-          properties.name,
-          "Charging station",
-        )}
+        ${displayValue(name, "Charging station")}
       </strong>
 
       <dl>
         <dt>Operator</dt>
-        <dd>
-          ${displayValue(properties.operator)}
-        </dd>
+        <dd>${displayValue(operator)}</dd>
 
         <dt>Charger type</dt>
-        <dd>
-          ${displayValue(
-            properties.charger_type,
-          )}
-        </dd>
+        <dd>${displayValue(chargerType)}</dd>
 
         <dt>Power</dt>
         <dd>
           ${
-            properties.power_kw
-              ? `${escapeHtml(
-                  properties.power_kw,
-                )} kW`
+            power
+              ? `${escapeHtml(power)} kW`
               : "Not available"
           }
         </dd>
 
         <dt>Address</dt>
-        <dd>
-          ${displayValue(properties.address)}
-        </dd>
+        <dd>${displayValue(address)}</dd>
       </dl>
     </div>
   `);
@@ -236,10 +236,10 @@ function analyseCandidate(
     latitude,
   ]);
 
-  let nearestKilometres =
-    Number.POSITIVE_INFINITY;
-
   let stationsWithinOneKm = 0;
+
+  let nearestDistanceKilometres =
+    Number.POSITIVE_INFINITY;
 
   for (const station of stations.features) {
     if (station.geometry?.type !== "Point") {
@@ -276,15 +276,24 @@ function analyseCandidate(
       stationsWithinOneKm += 1;
     }
 
-    if (stationDistance < nearestKilometres) {
-      nearestKilometres = stationDistance;
+    if (
+      stationDistance <
+      nearestDistanceKilometres
+    ) {
+      nearestDistanceKilometres =
+        stationDistance;
     }
   }
 
   const nearestDistanceMetres =
-    nearestKilometres * 1000;
+    nearestDistanceKilometres * 1000;
 
-  const coverageBuffer = buffer(
+  const classification = classifyCoverage(
+    stationsWithinOneKm,
+    nearestDistanceMetres,
+  );
+
+  const generatedBuffer = buffer(
     candidatePoint,
     1,
     {
@@ -299,33 +308,35 @@ function analyseCandidate(
       longitude,
       stationsWithinOneKm,
       nearestDistanceMetres,
-      classification: classifyCoverage(
-        stationsWithinOneKm,
-        nearestDistanceMetres,
-      ),
+      classification,
     },
-    coverageBuffer: coverageBuffer ?? null,
+
+    coverageBuffer:
+      generatedBuffer ?? null,
   };
 }
 
 type CandidateSelectorProps = {
   stations: FeatureCollection;
-  onSelect: (result: CandidateResult) => void;
+
+  onCandidateSelected: (
+    result: CandidateResult,
+  ) => void;
 };
 
 function CandidateSelector({
   stations,
-  onSelect,
+  onCandidateSelected,
 }: CandidateSelectorProps) {
   useMapEvents({
     click(event) {
-      onSelect(
-        analyseCandidate(
-          event.latlng.lat,
-          event.latlng.lng,
-          stations,
-        ),
+      const result = analyseCandidate(
+        event.latlng.lat,
+        event.latlng.lng,
+        stations,
       );
+
+      onCandidateSelected(result);
     },
   });
 
@@ -333,8 +344,10 @@ function CandidateSelector({
 }
 
 function App() {
-  const [authenticatedUser, setAuthenticatedUser] =
-    useState<User | null>(null);
+  const [
+    authenticatedUser,
+    setAuthenticatedUser,
+  ] = useState<User | null>(null);
 
   const [accessToken, setAccessToken] =
     useState<string | null>(null);
@@ -348,15 +361,19 @@ function App() {
   const [candidate, setCandidate] =
     useState<CandidateAnalysis | null>(null);
 
-  const [coverageBuffer, setCoverageBuffer] =
-    useState<Feature<
-      Polygon | MultiPolygon
-    > | null>(null);
+  const [
+    coverageBuffer,
+    setCoverageBuffer,
+  ] = useState<
+    Feature<Polygon | MultiPolygon> | null
+  >(null);
 
-  const [serverNearest, setServerNearest] =
-    useState<NearestStationResult | null>(
-      null,
-    );
+  const [
+    serverNearest,
+    setServerNearest,
+  ] = useState<NearestStationResult | null>(
+    null,
+  );
 
   const [serverStatus, setServerStatus] =
     useState<ServerStatus>("idle");
@@ -364,29 +381,37 @@ function App() {
   const [serverMessage, setServerMessage] =
     useState("");
 
-  const [savedProposals, setSavedProposals] =
-    useState<ProposalFeature[]>([]);
+  const [
+    savedProposals,
+    setSavedProposals,
+  ] = useState<ProposalFeature[]>([]);
 
-  const [proposalLoadMessage, setProposalLoadMessage] =
-    useState("");
+  const [
+    proposalLoadMessage,
+    setProposalLoadMessage,
+  ] = useState("");
 
   const [dataError, setDataError] =
     useState<string | null>(null);
 
-  const handleAuthenticationChange = useCallback(
-    (user: User | null, token: string | null) => {
-      setAuthenticatedUser(user);
-      setAccessToken(token);
+  const handleAuthenticationChange =
+    useCallback(
+      (
+        user: User | null,
+        token: string | null,
+      ) => {
+        setAuthenticatedUser(user);
+        setAccessToken(token);
 
-      if (!token) {
-        setSavedProposals([]);
-        setServerNearest(null);
-        setServerStatus("idle");
-        setServerMessage("");
-      }
-    },
-    [],
-  );
+        if (!token) {
+          setSavedProposals([]);
+          setServerNearest(null);
+          setServerStatus("idle");
+          setServerMessage("");
+        }
+      },
+      [],
+    );
 
   useEffect(() => {
     async function loadSpatialData() {
@@ -457,12 +482,14 @@ function App() {
 
     async function loadSavedProposals() {
       try {
-        const collection =
-          await getMyProposals(accessToken!);
+        const proposalCollection =
+          await getMyProposals(
+            accessToken as string,
+          );
 
         if (!cancelled) {
           setSavedProposals(
-            collection.features,
+            proposalCollection.features,
           );
 
           setProposalLoadMessage("");
@@ -489,6 +516,7 @@ function App() {
     result: CandidateResult,
   ) {
     setCandidate(result.analysis);
+
     setCoverageBuffer(
       result.coverageBuffer,
     );
@@ -542,10 +570,35 @@ function App() {
   ) {
     setSavedProposals((current) => [
       proposal,
+
       ...current.filter(
-        (item) => item.id !== proposal.id,
+        (item) =>
+          item.id !== proposal.id,
       ),
     ]);
+  }
+
+  function handleProposalUpdated(
+    updatedProposal: ProposalFeature,
+  ) {
+    setSavedProposals((current) =>
+      current.map((proposal) =>
+        proposal.id === updatedProposal.id
+          ? updatedProposal
+          : proposal,
+      ),
+    );
+  }
+
+  function handleProposalDeleted(
+    proposalId: string,
+  ) {
+    setSavedProposals((current) =>
+      current.filter(
+        (proposal) =>
+          proposal.id !== proposalId,
+      ),
+    );
   }
 
   const districtCount =
@@ -590,7 +643,9 @@ function App() {
               PROJECT PURPOSE
             </p>
 
-            <h2>Assess charging coverage</h2>
+            <h2>
+              Assess charging coverage
+            </h2>
 
             <p>
               Explore Berlin&apos;s existing
@@ -641,7 +696,8 @@ function App() {
 
                 <div className="server-analysis">
                   <span className="server-analysis-label">
-                    SERVER-SIDE POSTGIS ANALYSIS
+                    SERVER-SIDE POSTGIS
+                    ANALYSIS
                   </span>
 
                   {serverStatus ===
@@ -727,6 +783,17 @@ function App() {
             }
           />
 
+          <ProposalManager
+            proposals={savedProposals}
+            accessToken={accessToken}
+            onProposalUpdated={
+              handleProposalUpdated
+            }
+            onProposalDeleted={
+              handleProposalDeleted
+            }
+          />
+
           {proposalLoadMessage && (
             <p className="form-message error">
               {proposalLoadMessage}
@@ -802,10 +869,10 @@ function App() {
           <section>
             <p className="method-note">
               This screening evaluates
-              existing infrastructure coverage.
-              It does not model demand, grid
-              capacity, land ownership or
-              construction cost.
+              existing infrastructure
+              coverage. It does not model
+              demand, grid capacity, land
+              ownership or construction cost.
             </p>
           </section>
         </aside>
@@ -913,6 +980,7 @@ function App() {
                     center={[
                       proposal.geometry
                         .coordinates[1],
+
                       proposal.geometry
                         .coordinates[0],
                     ]}
@@ -1005,7 +1073,9 @@ function App() {
             {stations && (
               <CandidateSelector
                 stations={stations}
-                onSelect={(result) => {
+                onCandidateSelected={(
+                  result,
+                ) => {
                   void handleCandidateSelected(
                     result,
                   );
