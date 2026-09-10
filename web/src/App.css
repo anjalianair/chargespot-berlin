@@ -310,3 +310,113 @@ body {
 .leaflet-interactive {
   cursor: pointer;
 }
+.auth-panel {
+  padding: 22px;
+  border: 1px solid #c8e2e2;
+  border-radius: 14px;
+  background: #f5fbfb;
+}
+
+.auth-panel h3 {
+  margin: 8px 0;
+  color: #123650;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 12px 0 18px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #e3eeee;
+}
+
+.auth-tab {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 7px;
+  color: #4d6978;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-tab.active {
+  color: #123650;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(18 54 80 / 12%);
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 6px;
+  color: #385667;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.auth-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid #abc9cc;
+  border-radius: 8px;
+  color: #123650;
+  background: #ffffff;
+  font: inherit;
+}
+
+.auth-form input:focus {
+  border-color: #0b9d98;
+  outline: 3px solid rgb(11 157 152 / 15%);
+}
+
+.primary-button {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #087d79;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #0b9d98;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primary-button:hover {
+  background: #087d79;
+}
+
+.primary-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.auth-email {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+  color: #526f7e;
+  font-size: 0.9rem;
+}
+
+.auth-help {
+  margin: 12px 0 16px;
+  color: #526f7e;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.auth-panel .secondary-button {
+  width: 100%;
+}
+
+.auth-panel .section-label {
+  margin-top: 0;
+}
