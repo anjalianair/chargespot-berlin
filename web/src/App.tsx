@@ -5,13 +5,19 @@ import type {
   FeatureCollection,
   Geometry,
   GeoJsonProperties,
+  MultiPolygon,
+  Polygon,
 } from "geojson";
+import { buffer, distance, point } from "@turf/turf";
 import {
+  CircleMarker,
   GeoJSON,
   MapContainer,
+  Pane,
   ScaleControl,
   TileLayer,
   useMap,
+  useMapEvents,
   ZoomControl,
 } from "react-leaflet";
 
@@ -27,6 +33,28 @@ const STATIONS_FIRST_PAGE_URL =
 
 const STATIONS_SECOND_PAGE_URL =
   "http://127.0.0.1:9000/collections/api.charging_station_public/items.json?limit=1000&offset=1000";
+
+
+type CoverageClassification =
+  | "Potential coverage gap"
+  | "Limited coverage"
+  | "Moderate coverage"
+  | "Well covered";
+
+
+type CandidateAnalysis = {
+  latitude: number;
+  longitude: number;
+  stationsWithinOneKm: number;
+  nearestDistanceMetres: number;
+  classification: CoverageClassification;
+};
+
+
+type CandidateResult = {
+  analysis: CandidateAnalysis;
+  coverageBuffer: Feature<Polygon | MultiPolygon> | null;
+};
 
 
 function MapResizeHandler() {
@@ -63,8 +91,15 @@ function escapeHtml(value: unknown) {
 }
 
 
-function displayValue(value: unknown, fallback = "Not available") {
-  if (value === null || value === undefined || value === "") {
+function displayValue(
+  value: unknown,
+  fallback = "Not available",
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
     return fallback;
   }
 
@@ -96,7 +131,9 @@ function addStationPopup(
 ) {
   const properties = feature.properties ?? {};
 
-  const stationName = properties.name ?? "Charging station";
+  const stationName =
+    properties.name ?? "Charging station";
+
   const operator = properties.operator;
   const chargerType = properties.charger_type;
   const power = properties.power_kw;
@@ -104,7 +141,9 @@ function addStationPopup(
 
   layer.bindPopup(`
     <div class="map-popup">
-      <strong>${displayValue(stationName, "Charging station")}</strong>
+      <strong>
+        ${displayValue(stationName, "Charging station")}
+      </strong>
 
       <dl>
         <dt>Operator</dt>
@@ -114,13 +153,163 @@ function addStationPopup(
         <dd>${displayValue(chargerType)}</dd>
 
         <dt>Power</dt>
-        <dd>${power ? `${escapeHtml(power)} kW` : "Not available"}</dd>
+        <dd>
+          ${power
+            ? `${escapeHtml(power)} kW`
+            : "Not available"}
+        </dd>
 
         <dt>Address</dt>
         <dd>${displayValue(address)}</dd>
       </dl>
     </div>
   `);
+}
+
+
+function classifyCoverage(
+  stationsWithinOneKm: number,
+  nearestDistanceMetres: number,
+): CoverageClassification {
+  if (
+    stationsWithinOneKm === 0 &&
+    nearestDistanceMetres >= 1000
+  ) {
+    return "Potential coverage gap";
+  }
+
+  if (
+    stationsWithinOneKm <= 2 ||
+    nearestDistanceMetres >= 750
+  ) {
+    return "Limited coverage";
+  }
+
+  if (stationsWithinOneKm <= 10) {
+    return "Moderate coverage";
+  }
+
+  return "Well covered";
+}
+
+
+function calculateCandidateAnalysis(
+  latitude: number,
+  longitude: number,
+  stations: FeatureCollection,
+): CandidateResult {
+  const candidatePoint = point([
+    longitude,
+    latitude,
+  ]);
+
+  let nearestDistanceKilometres =
+    Number.POSITIVE_INFINITY;
+
+  let stationsWithinOneKm = 0;
+
+  for (const station of stations.features) {
+    if (station.geometry?.type !== "Point") {
+      continue;
+    }
+
+    const stationLongitude = Number(
+      station.geometry.coordinates[0],
+    );
+
+    const stationLatitude = Number(
+      station.geometry.coordinates[1],
+    );
+
+    if (
+      !Number.isFinite(stationLongitude) ||
+      !Number.isFinite(stationLatitude)
+    ) {
+      continue;
+    }
+
+    const stationPoint = point([
+      stationLongitude,
+      stationLatitude,
+    ]);
+
+    const stationDistance = distance(
+      candidatePoint,
+      stationPoint,
+      {
+        units: "kilometers",
+      },
+    );
+
+    if (stationDistance <= 1) {
+      stationsWithinOneKm += 1;
+    }
+
+    if (
+      stationDistance <
+      nearestDistanceKilometres
+    ) {
+      nearestDistanceKilometres =
+        stationDistance;
+    }
+  }
+
+  const nearestDistanceMetres =
+    nearestDistanceKilometres * 1000;
+
+  const classification = classifyCoverage(
+    stationsWithinOneKm,
+    nearestDistanceMetres,
+  );
+
+  const generatedBuffer = buffer(
+    candidatePoint,
+    1,
+    {
+      units: "kilometers",
+      steps: 64,
+    },
+  );
+
+  return {
+    analysis: {
+      latitude,
+      longitude,
+      stationsWithinOneKm,
+      nearestDistanceMetres,
+      classification,
+    },
+    coverageBuffer: generatedBuffer ?? null,
+  };
+}
+
+
+type CandidateSelectorProps = {
+  stations: FeatureCollection;
+  onCandidateSelected: (
+    result: CandidateResult,
+  ) => void;
+};
+
+
+function CandidateSelector({
+  stations,
+  onCandidateSelected,
+}: CandidateSelectorProps) {
+  useMapEvents({
+    click(event) {
+      const result =
+        calculateCandidateAnalysis(
+          event.latlng.lat,
+          event.latlng.lng,
+          stations,
+        );
+
+      onCandidateSelected(result);
+    },
+  });
+
+  return null;
 }
 
 
@@ -131,7 +320,16 @@ function App() {
   const [stations, setStations] =
     useState<FeatureCollection | null>(null);
 
-  const [dataError, setDataError] = useState<string | null>(null);
+  const [candidate, setCandidate] =
+    useState<CandidateAnalysis | null>(null);
+
+  const [coverageBuffer, setCoverageBuffer] =
+    useState<
+      Feature<Polygon | MultiPolygon> | null
+    >(null);
+
+  const [dataError, setDataError] =
+    useState<string | null>(null);
 
 
   useEffect(() => {
@@ -153,8 +351,13 @@ function App() {
           );
         }
 
-        if (!firstStationResponse.ok || !secondStationResponse.ok) {
-          throw new Error("One or more station requests failed");
+        if (
+          !firstStationResponse.ok ||
+          !secondStationResponse.ok
+        ) {
+          throw new Error(
+            "One or more station requests failed",
+          );
         }
 
         const districtData =
@@ -190,9 +393,28 @@ function App() {
   }, []);
 
 
-  const districtCount = districts?.features.length ?? 0;
-  const stationCount = stations?.features.length ?? 0;
-  const spatialDataLoaded = districts !== null && stations !== null;
+  function handleCandidateSelected(
+    result: CandidateResult,
+  ) {
+    setCandidate(result.analysis);
+    setCoverageBuffer(result.coverageBuffer);
+  }
+
+
+  function clearCandidate() {
+    setCandidate(null);
+    setCoverageBuffer(null);
+  }
+
+
+  const districtCount =
+    districts?.features.length ?? 0;
+
+  const stationCount =
+    stations?.features.length ?? 0;
+
+  const spatialDataLoaded =
+    districts !== null && stations !== null;
 
 
   return (
@@ -200,7 +422,11 @@ function App() {
       <header className="app-header">
         <div>
           <h1>ChargeSpot Berlin</h1>
-          <p>Charging Coverage and Candidate-Site Screening</p>
+
+          <p>
+            Charging Coverage and
+            Candidate-Site Screening
+          </p>
         </div>
 
         <div className="header-status">
@@ -217,29 +443,92 @@ function App() {
       <main className="workspace">
         <aside className="sidebar">
           <section>
-            <p className="section-label">PROJECT PURPOSE</p>
+            <p className="section-label">
+              PROJECT PURPOSE
+            </p>
 
             <h2>Assess charging coverage</h2>
 
             <p>
-              Explore Berlin&apos;s existing charging infrastructure and
-              evaluate candidate locations for additional stations.
+              Explore Berlin&apos;s existing
+              charging infrastructure and
+              evaluate candidate locations
+              for additional stations.
             </p>
           </section>
 
           <section className="analysis-placeholder">
-            <p className="section-label">ANALYSIS</p>
-
-            <h3>Select a location</h3>
-
-            <p>
-              Click on the map to assess the existing charging coverage around
-              a candidate location.
+            <p className="section-label">
+              CLIENT-SIDE ANALYSIS
             </p>
+
+            {candidate ? (
+              <>
+                <h3>
+                  {candidate.classification}
+                </h3>
+
+                <div className="analysis-metrics">
+                  <div>
+                    <span>
+                      Stations within 1 km
+                    </span>
+
+                    <strong>
+                      {
+                        candidate
+                          .stationsWithinOneKm
+                      }
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>
+                      Nearest station
+                    </span>
+
+                    <strong>
+                      {candidate
+                        .nearestDistanceMetres
+                        .toFixed(0)}{" "}
+                      m
+                    </strong>
+                  </div>
+                </div>
+
+                <p className="coordinate-text">
+                  Candidate:{" "}
+                  {candidate.longitude.toFixed(5)}
+                  ,{" "}
+                  {candidate.latitude.toFixed(5)}
+                </p>
+
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={clearCandidate}
+                >
+                  Clear candidate
+                </button>
+              </>
+            ) : (
+              <>
+                <h3>Select a location</h3>
+
+                <p>
+                  Click on the map to create
+                  a one-kilometre buffer and
+                  assess existing charging
+                  coverage.
+                </p>
+              </>
+            )}
           </section>
 
           <section>
-            <p className="section-label">DATA STATUS</p>
+            <p className="section-label">
+              DATA STATUS
+            </p>
 
             {dataError ? (
               <p>{dataError}</p>
@@ -247,19 +536,25 @@ function App() {
               <>
                 <p>
                   Charging stations loaded:{" "}
-                  <strong>{stationCount.toLocaleString()}</strong>
+                  <strong>
+                    {stationCount.toLocaleString()}
+                  </strong>
                 </p>
 
                 <p>
                   Berlin districts loaded:{" "}
-                  <strong>{districtCount}</strong>
+                  <strong>
+                    {districtCount}
+                  </strong>
                 </p>
               </>
             )}
           </section>
 
           <section>
-            <p className="section-label">MAP LEGEND</p>
+            <p className="section-label">
+              MAP LEGEND
+            </p>
 
             <div className="legend-item">
               <span className="legend-symbol station-symbol" />
@@ -275,6 +570,21 @@ function App() {
               <span className="legend-symbol proposal-symbol" />
               Candidate location
             </div>
+
+            <div className="legend-item">
+              <span className="legend-symbol buffer-symbol" />
+              One-kilometre assessment area
+            </div>
+          </section>
+
+          <section>
+            <p className="method-note">
+              This screening evaluates
+              existing infrastructure coverage.
+              It does not model demand, grid
+              capacity, land ownership or
+              construction cost.
+            </p>
           </section>
         </aside>
 
@@ -295,16 +605,49 @@ function App() {
             />
 
             {districts && (
+  <GeoJSON
+    data={districts}
+    style={{
+      color: "#0f8f89",
+      weight: 2,
+      opacity: 0.9,
+      fillColor: "#18a39b",
+      fillOpacity: 0.08,
+      bubblingMouseEvents: true,
+    }}
+    onEachFeature={addDistrictPopup}
+    eventHandlers={{
+      click(event) {
+        if (!stations) {
+          return;
+        }
+
+        const result = calculateCandidateAnalysis(
+          event.latlng.lat,
+          event.latlng.lng,
+          stations,
+        );
+
+        handleCandidateSelected(result);
+      },
+    }}
+  />
+)}
+
+            {coverageBuffer && (
               <GeoJSON
-                data={districts}
+                key={
+                  `${candidate?.latitude}-` +
+                  `${candidate?.longitude}`
+                }
+                data={coverageBuffer}
                 style={{
-                  color: "#0f8f89",
+                  color: "#e77728",
                   weight: 2,
-                  opacity: 0.9,
-                  fillColor: "#18a39b",
-                  fillOpacity: 0.08,
+                  dashArray: "7 5",
+                  fillColor: "#f5a15f",
+                  fillOpacity: 0.16,
                 }}
-                onEachFeature={addDistrictPopup}
               />
             )}
 
@@ -318,9 +661,59 @@ function App() {
                     weight: 1,
                     fillColor: "#1677a8",
                     fillOpacity: 0.9,
+                    bubblingMouseEvents: true,
                   })
                 }
-                onEachFeature={addStationPopup}
+                onEachFeature={
+                  addStationPopup
+                }
+                eventHandlers={{
+                  click(event) {
+                    const result =
+                      calculateCandidateAnalysis(
+                        event.latlng.lat,
+                        event.latlng.lng,
+                        stations,
+                      );
+
+                    handleCandidateSelected(
+                      result,
+                    );
+                  },
+                }}
+              />
+            )}
+
+            <Pane
+              name="candidate-marker-pane"
+              style={{
+                zIndex: 650,
+                pointerEvents: "none",
+              }}
+            >
+              {candidate && (
+                <CircleMarker
+                  center={[
+                    candidate.latitude,
+                    candidate.longitude,
+                  ]}
+                  radius={10}
+                  pathOptions={{
+                    color: "#ffffff",
+                    weight: 4,
+                    fillColor: "#e77728",
+                    fillOpacity: 1,
+                  }}
+                />
+              )}
+            </Pane>
+
+            {stations && (
+              <CandidateSelector
+                stations={stations}
+                onCandidateSelected={
+                  handleCandidateSelected
+                }
               />
             )}
 
@@ -329,8 +722,14 @@ function App() {
           </MapContainer>
 
           <div className="map-title">
-            <strong>Berlin charging coverage</strong>
-            <span>EPSG:4326 web map</span>
+            <strong>
+              Berlin charging coverage
+            </strong>
+
+            <span>
+              Click the map to screen a
+              candidate location
+            </span>
           </div>
         </section>
       </main>
@@ -339,5 +738,3 @@ function App() {
 }
 
 export default App;
-
-   

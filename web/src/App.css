@@ -246,3 +246,67 @@ body {
 .map-popup dd {
   margin: 0;
 }
+.analysis-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.analysis-metrics div {
+  padding: 12px;
+  border: 1px solid #cfe5e4;
+  border-radius: 8px;
+  background: white;
+}
+
+.analysis-metrics span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.analysis-metrics strong {
+  color: var(--navy);
+  font-size: 20px;
+}
+
+.coordinate-text {
+  font-size: 12px;
+}
+
+.secondary-button {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--teal);
+  border-radius: 7px;
+  background: white;
+  color: var(--teal);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  background: #e5f6f4;
+}
+
+.buffer-symbol {
+  width: 22px;
+  height: 14px;
+  border: 2px dashed #e77728;
+  background: rgb(231 119 40 / 15%);
+}
+
+.method-note {
+  padding: 12px;
+  border-left: 3px solid #d9a441;
+  background: #fff9e9;
+  color: #6d5b2f !important;
+  font-size: 12px;
+}
+
+.leaflet-interactive {
+  cursor: pointer;
+}
