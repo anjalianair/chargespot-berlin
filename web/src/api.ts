@@ -137,3 +137,130 @@ export async function findNearestStation(
 
   return response.json();
 }
+export type ProposalProperties = {
+  title: string;
+  justification: string;
+  suggested_charger_type: string | null;
+  suggested_power_kw: number | null;
+  status: string;
+  suitability_score: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProposalFeature = {
+  type: "Feature";
+  id: string;
+  geometry: {
+    type: "Point";
+    coordinates: [number, number];
+  };
+  properties: ProposalProperties;
+};
+
+export type ProposalCollection = {
+  type: "FeatureCollection";
+  features: ProposalFeature[];
+};
+
+export type CreateProposalData = {
+  longitude: number;
+  latitude: number;
+  title: string;
+  justification: string;
+  suggested_charger_type?: string;
+  suggested_power_kw?: number;
+};
+
+export type UpdateProposalData = {
+  title?: string;
+  justification?: string;
+  suggested_charger_type?: string;
+  suggested_power_kw?: number;
+  proposal_status?: string;
+};
+
+export async function getMyProposals(
+  token: string,
+): Promise<ProposalCollection> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/proposals/mine`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+
+  return response.json();
+}
+
+export async function createProposal(
+  data: CreateProposalData,
+  token: string,
+): Promise<ProposalFeature> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/proposals`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+
+  return response.json();
+}
+
+export async function updateProposal(
+  proposalId: string,
+  data: UpdateProposalData,
+  token: string,
+): Promise<ProposalFeature> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/proposals/${encodeURIComponent(proposalId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+
+  return response.json();
+}
+
+export async function deleteProposal(
+  proposalId: string,
+  token: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/proposals/${encodeURIComponent(proposalId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}

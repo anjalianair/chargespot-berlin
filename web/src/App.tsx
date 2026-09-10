@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import L, { type Layer } from "leaflet";
 import type {
   Feature,
@@ -14,6 +18,7 @@ import {
   GeoJSON,
   MapContainer,
   Pane,
+  Popup,
   ScaleControl,
   TileLayer,
   useMap,
@@ -25,19 +30,22 @@ import "leaflet/dist/leaflet.css";
 import "./App.css";
 
 import AuthPanel from "./components/AuthPanel";
+import ProposalPanel from "./components/ProposalPanel";
 import {
   findNearestStation,
+  getMyProposals,
   type NearestStationResult,
+  type ProposalFeature,
   type User,
 } from "./api";
 
 const DISTRICTS_URL =
   "http://127.0.0.1:9000/collections/api.district_public/items.json?limit=12";
 
-const STATIONS_FIRST_PAGE_URL =
+const STATIONS_PAGE_ONE =
   "http://127.0.0.1:9000/collections/api.charging_station_public/items.json?limit=1000&offset=0";
 
-const STATIONS_SECOND_PAGE_URL =
+const STATIONS_PAGE_TWO =
   "http://127.0.0.1:9000/collections/api.charging_station_public/items.json?limit=1000&offset=1000";
 
 type CoverageClassification =
@@ -56,10 +64,12 @@ type CandidateAnalysis = {
 
 type CandidateResult = {
   analysis: CandidateAnalysis;
-  coverageBuffer: Feature<Polygon | MultiPolygon> | null;
+  coverageBuffer: Feature<
+    Polygon | MultiPolygon
+  > | null;
 };
 
-type ServerAnalysisStatus =
+type ServerStatus =
   | "idle"
   | "loading"
   | "success"
@@ -69,19 +79,27 @@ function MapResizeHandler() {
   const map = useMap();
 
   useEffect(() => {
-    const updateMapSize = () => {
-      map.invalidateSize();
-    };
+    const updateSize = () => map.invalidateSize();
 
-    const firstTimer = window.setTimeout(updateMapSize, 100);
-    const secondTimer = window.setTimeout(updateMapSize, 500);
+    const firstTimer = window.setTimeout(
+      updateSize,
+      100,
+    );
 
-    window.addEventListener("resize", updateMapSize);
+    const secondTimer = window.setTimeout(
+      updateSize,
+      500,
+    );
+
+    window.addEventListener("resize", updateSize);
 
     return () => {
       window.clearTimeout(firstTimer);
       window.clearTimeout(secondTimer);
-      window.removeEventListener("resize", updateMapSize);
+      window.removeEventListener(
+        "resize",
+        updateSize,
+      );
     };
   }, [map]);
 
@@ -97,7 +115,10 @@ function escapeHtml(value: unknown) {
     .replaceAll("'", "&#039;");
 }
 
-function displayValue(value: unknown, fallback = "Not available") {
+function displayValue(
+  value: unknown,
+  fallback = "Not available",
+) {
   if (
     value === null ||
     value === undefined ||
@@ -110,7 +131,10 @@ function displayValue(value: unknown, fallback = "Not available") {
 }
 
 function addDistrictPopup(
-  feature: Feature<Geometry, GeoJsonProperties>,
+  feature: Feature<
+    Geometry,
+    GeoJsonProperties
+  >,
   layer: Layer,
 ) {
   const districtName =
@@ -127,78 +151,92 @@ function addDistrictPopup(
 }
 
 function addStationPopup(
-  feature: Feature<Geometry, GeoJsonProperties>,
+  feature: Feature<
+    Geometry,
+    GeoJsonProperties
+  >,
   layer: Layer,
 ) {
   const properties = feature.properties ?? {};
-  const stationName = properties.name ?? "Charging station";
-  const operator = properties.operator;
-  const chargerType = properties.charger_type;
-  const power = properties.power_kw;
-  const address = properties.address;
 
   layer.bindPopup(`
     <div class="map-popup">
-      <strong>${displayValue(stationName, "Charging station")}</strong>
+      <strong>
+        ${displayValue(
+          properties.name,
+          "Charging station",
+        )}
+      </strong>
 
       <dl>
         <dt>Operator</dt>
-        <dd>${displayValue(operator)}</dd>
+        <dd>
+          ${displayValue(properties.operator)}
+        </dd>
 
         <dt>Charger type</dt>
-        <dd>${displayValue(chargerType)}</dd>
+        <dd>
+          ${displayValue(
+            properties.charger_type,
+          )}
+        </dd>
 
         <dt>Power</dt>
         <dd>
           ${
-            power !== null &&
-            power !== undefined &&
-            power !== ""
-              ? `${escapeHtml(power)} kW`
+            properties.power_kw
+              ? `${escapeHtml(
+                  properties.power_kw,
+                )} kW`
               : "Not available"
           }
         </dd>
 
         <dt>Address</dt>
-        <dd>${displayValue(address)}</dd>
+        <dd>
+          ${displayValue(properties.address)}
+        </dd>
       </dl>
     </div>
   `);
 }
 
 function classifyCoverage(
-  stationsWithinOneKm: number,
-  nearestDistanceMetres: number,
+  stationCount: number,
+  nearestDistance: number,
 ): CoverageClassification {
   if (
-    stationsWithinOneKm === 0 &&
-    nearestDistanceMetres >= 1000
+    stationCount === 0 &&
+    nearestDistance >= 1000
   ) {
     return "Potential coverage gap";
   }
 
   if (
-    stationsWithinOneKm <= 2 ||
-    nearestDistanceMetres >= 750
+    stationCount <= 2 ||
+    nearestDistance >= 750
   ) {
     return "Limited coverage";
   }
 
-  if (stationsWithinOneKm <= 10) {
+  if (stationCount <= 10) {
     return "Moderate coverage";
   }
 
   return "Well covered";
 }
 
-function calculateCandidateAnalysis(
+function analyseCandidate(
   latitude: number,
   longitude: number,
   stations: FeatureCollection,
 ): CandidateResult {
-  const candidatePoint = point([longitude, latitude]);
+  const candidatePoint = point([
+    longitude,
+    latitude,
+  ]);
 
-  let nearestDistanceKilometres =
+  let nearestKilometres =
     Number.POSITIVE_INFINITY;
 
   let stationsWithinOneKm = 0;
@@ -223,14 +261,12 @@ function calculateCandidateAnalysis(
       continue;
     }
 
-    const stationPoint = point([
-      stationLongitude,
-      stationLatitude,
-    ]);
-
     const stationDistance = distance(
       candidatePoint,
-      stationPoint,
+      point([
+        stationLongitude,
+        stationLatitude,
+      ]),
       {
         units: "kilometers",
       },
@@ -240,20 +276,15 @@ function calculateCandidateAnalysis(
       stationsWithinOneKm += 1;
     }
 
-    if (stationDistance < nearestDistanceKilometres) {
-      nearestDistanceKilometres = stationDistance;
+    if (stationDistance < nearestKilometres) {
+      nearestKilometres = stationDistance;
     }
   }
 
   const nearestDistanceMetres =
-    nearestDistanceKilometres * 1000;
+    nearestKilometres * 1000;
 
-  const classification = classifyCoverage(
-    stationsWithinOneKm,
-    nearestDistanceMetres,
-  );
-
-  const generatedBuffer = buffer(
+  const coverageBuffer = buffer(
     candidatePoint,
     1,
     {
@@ -268,32 +299,33 @@ function calculateCandidateAnalysis(
       longitude,
       stationsWithinOneKm,
       nearestDistanceMetres,
-      classification,
+      classification: classifyCoverage(
+        stationsWithinOneKm,
+        nearestDistanceMetres,
+      ),
     },
-    coverageBuffer: generatedBuffer ?? null,
+    coverageBuffer: coverageBuffer ?? null,
   };
 }
 
 type CandidateSelectorProps = {
   stations: FeatureCollection;
-  onCandidateSelected: (
-    result: CandidateResult,
-  ) => void;
+  onSelect: (result: CandidateResult) => void;
 };
 
 function CandidateSelector({
   stations,
-  onCandidateSelected,
+  onSelect,
 }: CandidateSelectorProps) {
   useMapEvents({
     click(event) {
-      const result = calculateCandidateAnalysis(
-        event.latlng.lat,
-        event.latlng.lng,
-        stations,
+      onSelect(
+        analyseCandidate(
+          event.latlng.lat,
+          event.latlng.lng,
+          stations,
+        ),
       );
-
-      onCandidateSelected(result);
     },
   });
 
@@ -317,21 +349,29 @@ function App() {
     useState<CandidateAnalysis | null>(null);
 
   const [coverageBuffer, setCoverageBuffer] =
-    useState<Feature<Polygon | MultiPolygon> | null>(
+    useState<Feature<
+      Polygon | MultiPolygon
+    > | null>(null);
+
+  const [serverNearest, setServerNearest] =
+    useState<NearestStationResult | null>(
       null,
     );
 
+  const [serverStatus, setServerStatus] =
+    useState<ServerStatus>("idle");
+
+  const [serverMessage, setServerMessage] =
+    useState("");
+
+  const [savedProposals, setSavedProposals] =
+    useState<ProposalFeature[]>([]);
+
+  const [proposalLoadMessage, setProposalLoadMessage] =
+    useState("");
+
   const [dataError, setDataError] =
     useState<string | null>(null);
-
-  const [serverNearest, setServerNearest] =
-    useState<NearestStationResult | null>(null);
-
-  const [serverAnalysisStatus, setServerAnalysisStatus] =
-    useState<ServerAnalysisStatus>("idle");
-
-  const [serverAnalysisMessage, setServerAnalysisMessage] =
-    useState("");
 
   const handleAuthenticationChange = useCallback(
     (user: User | null, token: string | null) => {
@@ -339,9 +379,10 @@ function App() {
       setAccessToken(token);
 
       if (!token) {
+        setSavedProposals([]);
         setServerNearest(null);
-        setServerAnalysisStatus("idle");
-        setServerAnalysisMessage("");
+        setServerStatus("idle");
+        setServerMessage("");
       }
     },
     [],
@@ -352,48 +393,43 @@ function App() {
       try {
         const [
           districtResponse,
-          firstStationResponse,
-          secondStationResponse,
+          stationResponseOne,
+          stationResponseTwo,
         ] = await Promise.all([
           fetch(DISTRICTS_URL),
-          fetch(STATIONS_FIRST_PAGE_URL),
-          fetch(STATIONS_SECOND_PAGE_URL),
+          fetch(STATIONS_PAGE_ONE),
+          fetch(STATIONS_PAGE_TWO),
         ]);
 
-        if (!districtResponse.ok) {
-          throw new Error(
-            `District request failed with status ${districtResponse.status}`,
-          );
-        }
-
         if (
-          !firstStationResponse.ok ||
-          !secondStationResponse.ok
+          !districtResponse.ok ||
+          !stationResponseOne.ok ||
+          !stationResponseTwo.ok
         ) {
           throw new Error(
-            "One or more station requests failed",
+            "A spatial-data request failed.",
           );
         }
 
         const districtData =
           (await districtResponse.json()) as FeatureCollection;
 
-        const firstStationPage =
-          (await firstStationResponse.json()) as FeatureCollection;
+        const stationPageOne =
+          (await stationResponseOne.json()) as FeatureCollection;
 
-        const secondStationPage =
-          (await secondStationResponse.json()) as FeatureCollection;
-
-        const stationData: FeatureCollection = {
-          type: "FeatureCollection",
-          features: [
-            ...firstStationPage.features,
-            ...secondStationPage.features,
-          ],
-        };
+        const stationPageTwo =
+          (await stationResponseTwo.json()) as FeatureCollection;
 
         setDistricts(districtData);
-        setStations(stationData);
+
+        setStations({
+          type: "FeatureCollection",
+          features: [
+            ...stationPageOne.features,
+            ...stationPageTwo.features,
+          ],
+        });
+
         setDataError(null);
       } catch (error) {
         console.error(error);
@@ -407,37 +443,85 @@ function App() {
     void loadSpatialData();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!accessToken) {
+      setSavedProposals([]);
+      setProposalLoadMessage("");
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    async function loadSavedProposals() {
+      try {
+        const collection =
+          await getMyProposals(accessToken!);
+
+        if (!cancelled) {
+          setSavedProposals(
+            collection.features,
+          );
+
+          setProposalLoadMessage("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setProposalLoadMessage(
+            error instanceof Error
+              ? error.message
+              : "Saved proposals could not be loaded.",
+          );
+        }
+      }
+    }
+
+    void loadSavedProposals();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
   async function handleCandidateSelected(
     result: CandidateResult,
   ) {
     setCandidate(result.analysis);
-    setCoverageBuffer(result.coverageBuffer);
+    setCoverageBuffer(
+      result.coverageBuffer,
+    );
+
     setServerNearest(null);
 
     if (!accessToken) {
-      setServerAnalysisStatus("idle");
-      setServerAnalysisMessage(
+      setServerStatus("idle");
+
+      setServerMessage(
         "Log in to calculate the authoritative PostGIS distance.",
       );
+
       return;
     }
 
-    setServerAnalysisStatus("loading");
-    setServerAnalysisMessage("");
+    setServerStatus("loading");
+    setServerMessage("");
 
     try {
-      const nearestResult = await findNearestStation(
-        result.analysis.longitude,
-        result.analysis.latitude,
-        accessToken,
-      );
+      const resultFromServer =
+        await findNearestStation(
+          result.analysis.longitude,
+          result.analysis.latitude,
+          accessToken,
+        );
 
-      setServerNearest(nearestResult);
-      setServerAnalysisStatus("success");
+      setServerNearest(resultFromServer);
+      setServerStatus("success");
     } catch (error) {
-      setServerNearest(null);
-      setServerAnalysisStatus("error");
-      setServerAnalysisMessage(
+      setServerStatus("error");
+
+      setServerMessage(
         error instanceof Error
           ? error.message
           : "Server analysis failed.",
@@ -449,8 +533,19 @@ function App() {
     setCandidate(null);
     setCoverageBuffer(null);
     setServerNearest(null);
-    setServerAnalysisStatus("idle");
-    setServerAnalysisMessage("");
+    setServerStatus("idle");
+    setServerMessage("");
+  }
+
+  function handleProposalCreated(
+    proposal: ProposalFeature,
+  ) {
+    setSavedProposals((current) => [
+      proposal,
+      ...current.filter(
+        (item) => item.id !== proposal.id,
+      ),
+    ]);
   }
 
   const districtCount =
@@ -460,7 +555,8 @@ function App() {
     stations?.features.length ?? 0;
 
   const spatialDataLoaded =
-    districts !== null && stations !== null;
+    districts !== null &&
+    stations !== null;
 
   return (
     <div className="app">
@@ -469,7 +565,8 @@ function App() {
           <h1>ChargeSpot Berlin</h1>
 
           <p>
-            Charging Coverage and Candidate-Site Screening
+            Charging Coverage and
+            Candidate-Site Screening
           </p>
         </div>
 
@@ -496,9 +593,10 @@ function App() {
             <h2>Assess charging coverage</h2>
 
             <p>
-              Explore Berlin&apos;s existing charging
-              infrastructure and evaluate candidate
-              locations for additional stations.
+              Explore Berlin&apos;s existing
+              charging infrastructure and
+              evaluate candidate locations
+              for additional stations.
             </p>
           </section>
 
@@ -509,19 +607,28 @@ function App() {
 
             {candidate ? (
               <>
-                <h3>{candidate.classification}</h3>
+                <h3>
+                  {candidate.classification}
+                </h3>
 
                 <div className="analysis-metrics">
                   <div>
-                    <span>Stations within 1 km</span>
+                    <span>
+                      Stations within 1 km
+                    </span>
 
                     <strong>
-                      {candidate.stationsWithinOneKm}
+                      {
+                        candidate
+                          .stationsWithinOneKm
+                      }
                     </strong>
                   </div>
 
                   <div>
-                    <span>Nearest station</span>
+                    <span>
+                      Nearest station
+                    </span>
 
                     <strong>
                       {candidate.nearestDistanceMetres.toFixed(
@@ -537,11 +644,16 @@ function App() {
                     SERVER-SIDE POSTGIS ANALYSIS
                   </span>
 
-                  {serverAnalysisStatus === "loading" && (
-                    <p>Calculating exact distance…</p>
+                  {serverStatus ===
+                    "loading" && (
+                    <p>
+                      Calculating exact
+                      distance…
+                    </p>
                   )}
 
-                  {serverAnalysisStatus === "success" &&
+                  {serverStatus ===
+                    "success" &&
                     serverNearest && (
                       <>
                         <strong>
@@ -553,24 +665,30 @@ function App() {
 
                         <p>
                           Nearest:{" "}
-                          {serverNearest.nearest_station
+                          {serverNearest
+                            .nearest_station
                             .properties.name ||
                             "Charging station"}
                         </p>
                       </>
                     )}
 
-                  {serverAnalysisMessage && (
+                  {serverMessage && (
                     <p className="server-analysis-message">
-                      {serverAnalysisMessage}
+                      {serverMessage}
                     </p>
                   )}
                 </div>
 
                 <p className="coordinate-text">
                   Candidate:{" "}
-                  {candidate.longitude.toFixed(5)},{" "}
-                  {candidate.latitude.toFixed(5)}
+                  {candidate.longitude.toFixed(
+                    5,
+                  )}
+                  ,{" "}
+                  {candidate.latitude.toFixed(
+                    5,
+                  )}
                 </p>
 
                 <button
@@ -586,9 +704,10 @@ function App() {
                 <h3>Select a location</h3>
 
                 <p>
-                  Click on the map to create a
-                  one-kilometre buffer and assess
-                  existing charging coverage.
+                  Click on the map to create
+                  a one-kilometre buffer and
+                  assess existing charging
+                  coverage.
                 </p>
               </>
             )}
@@ -599,6 +718,20 @@ function App() {
               handleAuthenticationChange
             }
           />
+
+          <ProposalPanel
+            candidate={candidate}
+            accessToken={accessToken}
+            onProposalCreated={
+              handleProposalCreated
+            }
+          />
+
+          {proposalLoadMessage && (
+            <p className="form-message error">
+              {proposalLoadMessage}
+            </p>
+          )}
 
           <section>
             <p className="section-label">
@@ -618,8 +751,19 @@ function App() {
 
                 <p>
                   Berlin districts loaded:{" "}
-                  <strong>{districtCount}</strong>
+                  <strong>
+                    {districtCount}
+                  </strong>
                 </p>
+
+                {authenticatedUser && (
+                  <p>
+                    My saved proposals:{" "}
+                    <strong>
+                      {savedProposals.length}
+                    </strong>
+                  </p>
+                )}
               </>
             )}
           </section>
@@ -641,7 +785,12 @@ function App() {
 
             <div className="legend-item">
               <span className="legend-symbol proposal-symbol" />
-              Candidate location
+              Current candidate
+            </div>
+
+            <div className="legend-item">
+              <span className="legend-symbol saved-proposal-symbol" />
+              My saved proposal
             </div>
 
             <div className="legend-item">
@@ -652,9 +801,10 @@ function App() {
 
           <section>
             <p className="method-note">
-              This screening evaluates existing
-              infrastructure coverage. It does not model
-              demand, grid capacity, land ownership or
+              This screening evaluates
+              existing infrastructure coverage.
+              It does not model demand, grid
+              capacity, land ownership or
               construction cost.
             </p>
           </section>
@@ -687,21 +837,22 @@ function App() {
                   fillOpacity: 0.08,
                   bubblingMouseEvents: true,
                 }}
-                onEachFeature={addDistrictPopup}
+                onEachFeature={
+                  addDistrictPopup
+                }
                 eventHandlers={{
                   click(event) {
                     if (!stations) {
                       return;
                     }
 
-                    const result =
-                      calculateCandidateAnalysis(
+                    void handleCandidateSelected(
+                      analyseCandidate(
                         event.latlng.lat,
                         event.latlng.lng,
                         stations,
-                      );
-
-                    void handleCandidateSelected(result);
+                      ),
+                    );
                   },
                 }}
               />
@@ -734,21 +885,98 @@ function App() {
                     bubblingMouseEvents: true,
                   })
                 }
-                onEachFeature={addStationPopup}
+                onEachFeature={
+                  addStationPopup
+                }
                 eventHandlers={{
                   click(event) {
-                    const result =
-                      calculateCandidateAnalysis(
+                    void handleCandidateSelected(
+                      analyseCandidate(
                         event.latlng.lat,
                         event.latlng.lng,
                         stations,
-                      );
-
-                    void handleCandidateSelected(result);
+                      ),
+                    );
                   },
                 }}
               />
             )}
+
+            <Pane
+              name="saved-proposals-pane"
+              style={{ zIndex: 625 }}
+            >
+              {savedProposals.map(
+                (proposal) => (
+                  <CircleMarker
+                    key={proposal.id}
+                    center={[
+                      proposal.geometry
+                        .coordinates[1],
+                      proposal.geometry
+                        .coordinates[0],
+                    ]}
+                    radius={8}
+                    pathOptions={{
+                      color: "#ffffff",
+                      weight: 3,
+                      fillColor: "#7c3aed",
+                      fillOpacity: 1,
+                    }}
+                  >
+                    <Popup>
+                      <div className="map-popup">
+                        <strong>
+                          {
+                            proposal.properties
+                              .title
+                          }
+                        </strong>
+
+                        <p>
+                          {
+                            proposal.properties
+                              .justification
+                          }
+                        </p>
+
+                        <dl>
+                          <dt>
+                            Charger type
+                          </dt>
+
+                          <dd>
+                            {proposal
+                              .properties
+                              .suggested_charger_type ||
+                              "Not specified"}
+                          </dd>
+
+                          <dt>Power</dt>
+
+                          <dd>
+                            {proposal
+                              .properties
+                              .suggested_power_kw
+                              ? `${proposal.properties.suggested_power_kw} kW`
+                              : "Not specified"}
+                          </dd>
+
+                          <dt>Status</dt>
+
+                          <dd>
+                            {
+                              proposal.properties
+                                .status
+                            }
+                          </dd>
+                        </dl>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                ),
+              )}
+            </Pane>
 
             <Pane
               name="candidate-marker-pane"
@@ -777,21 +1005,27 @@ function App() {
             {stations && (
               <CandidateSelector
                 stations={stations}
-                onCandidateSelected={(result) => {
-                  void handleCandidateSelected(result);
+                onSelect={(result) => {
+                  void handleCandidateSelected(
+                    result,
+                  );
                 }}
               />
             )}
 
             <ZoomControl position="bottomright" />
+
             <ScaleControl position="bottomleft" />
           </MapContainer>
 
           <div className="map-title">
-            <strong>Berlin charging coverage</strong>
+            <strong>
+              Berlin charging coverage
+            </strong>
 
             <span>
-              Click the map to screen a candidate location
+              Click the map to screen a
+              candidate location
             </span>
           </div>
         </section>
