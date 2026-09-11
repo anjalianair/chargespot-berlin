@@ -14,11 +14,9 @@ services:
     volumes:
       - postgis_data:/var/lib/postgresql/data
 
-      # Data files read by the import SQL scripts
       - ./database/data/charging_stations.geojson:/tmp/charging_stations.geojson:ro
       - ./database/data/berlin_districts.geojson:/tmp/berlin_districts.geojson:ro
 
-      # Automatically executed for a new database
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./database/import_charging_stations.sql:/docker-entrypoint-initdb.d/02_import_charging_stations.sql:ro
       - ./database/import_districts.sql:/docker-entrypoint-initdb.d/03_import_districts.sql:ro
@@ -65,6 +63,20 @@ services:
 
     ports:
       - "8000:8000"
+
+  web:
+    build:
+      context: ./web
+    container_name: chargespot-web
+
+    depends_on:
+      api:
+        condition: service_started
+      features:
+        condition: service_started
+
+    ports:
+      - "5173:80"
 
 volumes:
   postgis_data:
