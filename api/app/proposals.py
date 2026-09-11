@@ -117,8 +117,47 @@ def create_proposal(
     proposal: ProposalCreate,
     current_user: dict = Depends(get_current_user),
 ):
-    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as connection:
+    with psycopg.connect(
+        DATABASE_URL,
+        row_factory=dict_row,
+    ) as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM district
+                    WHERE ST_Covers(
+                        geom,
+                        ST_Transform(
+                            ST_SetSRID(
+                                ST_Point(%s, %s),
+                                4326
+                            ),
+                            25833
+                        )
+                    )
+                ) AS inside_berlin
+                """,
+                (
+                    proposal.longitude,
+                    proposal.latitude,
+                ),
+            )
+
+            inside_berlin = cursor.fetchone()[
+                "inside_berlin"
+            ]
+
+            if not inside_berlin:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Candidate location must be "
+                        "inside a Berlin district"
+                    ),
+                )
+
             cursor.execute(
                 """
                 INSERT INTO site_proposal (
@@ -136,7 +175,10 @@ def create_proposal(
                     %s,
                     %s,
                     ST_Transform(
-                        ST_SetSRID(ST_Point(%s, %s), 4326),
+                        ST_SetSRID(
+                            ST_Point(%s, %s),
+                            4326
+                        ),
                         25833
                     )
                 )
@@ -152,18 +194,20 @@ def create_proposal(
                     proposal.latitude,
                 ),
             )
+
             proposal_id = cursor.fetchone()["id"]
 
             cursor.execute(
                 SELECT_PROPOSAL + " WHERE id = %s",
                 (proposal_id,),
             )
+
             row = cursor.fetchone()
 
         connection.commit()
 
     return proposal_to_feature(row)
-
+              
 
 @router.patch("/{proposal_id}")
 def update_proposal(
