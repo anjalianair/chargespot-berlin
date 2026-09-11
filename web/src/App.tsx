@@ -43,8 +43,11 @@ import {
   type User,
 } from "./api";
 
-const DISTRICTS_URL =
-  "http://127.0.0.1:9000/collections/api.district_public/items.json?limit=12";
+import {
+  getDensityColour,
+  getDistrictStatistics,
+  type DistrictStatisticsCollection,
+} from "./districtAnalysis";
 
 const STATIONS_PAGE_ONE =
   "http://127.0.0.1:9000/collections/api.charging_station_public/items.json?limit=1000&offset=0";
@@ -137,22 +140,65 @@ function displayValue(
   return escapeHtml(value);
 }
 
-function addDistrictPopup(
+function addDistrictStatisticsPopup(
   feature: Feature<
     Geometry,
     GeoJsonProperties
   >,
   layer: Layer,
 ) {
-  const districtName =
-    feature.properties?.name ??
-    feature.properties?.district_name ??
-    "Berlin district";
+  const properties = feature.properties ?? {};
 
   layer.bindPopup(`
-    <div class="map-popup">
-      <strong>${escapeHtml(districtName)}</strong>
-      <p>Berlin administrative district</p>
+    <div class="map-popup district-statistics-popup">
+      <strong>
+        ${displayValue(
+          properties.name,
+          "Berlin district",
+        )}
+      </strong>
+
+      <p>Charging infrastructure statistics</p>
+
+      <dl>
+        <dt>District area</dt>
+        <dd>
+          ${displayValue(
+            properties.area_km2,
+          )} km²
+        </dd>
+
+        <dt>Charging stations</dt>
+        <dd>
+          ${displayValue(
+            properties.station_count,
+            "0",
+          )}
+        </dd>
+
+        <dt>Stations per km²</dt>
+        <dd>
+          ${displayValue(
+            properties.stations_per_km2,
+            "0",
+          )}
+        </dd>
+
+        <dt>Density rank</dt>
+        <dd>
+          ${displayValue(
+            properties.density_rank,
+          )} of 12
+        </dd>
+
+        <dt>Saved proposals</dt>
+        <dd>
+          ${displayValue(
+            properties.proposal_count,
+            "0",
+          )}
+        </dd>
+      </dl>
     </div>
   `);
 }
@@ -166,41 +212,43 @@ function addStationPopup(
 ) {
   const properties = feature.properties ?? {};
 
-  const stationName =
-    properties.name ?? "Charging station";
-
-  const operator = properties.operator;
-  const chargerType = properties.charger_type;
-  const power = properties.power_kw;
-  const address = properties.address;
-
   layer.bindPopup(`
     <div class="map-popup">
       <strong>
         ${displayValue(
-          stationName,
+          properties.name,
           "Charging station",
         )}
       </strong>
 
       <dl>
         <dt>Operator</dt>
-        <dd>${displayValue(operator)}</dd>
+        <dd>
+          ${displayValue(properties.operator)}
+        </dd>
 
         <dt>Charger type</dt>
-        <dd>${displayValue(chargerType)}</dd>
+        <dd>
+          ${displayValue(
+            properties.charger_type,
+          )}
+        </dd>
 
         <dt>Power</dt>
         <dd>
           ${
-            power
-              ? `${escapeHtml(power)} kW`
+            properties.power_kw
+              ? `${escapeHtml(
+                  properties.power_kw,
+                )} kW`
               : "Not available"
           }
         </dd>
 
         <dt>Address</dt>
-        <dd>${displayValue(address)}</dd>
+        <dd>
+          ${displayValue(properties.address)}
+        </dd>
       </dl>
     </div>
   `);
@@ -355,8 +403,12 @@ function App() {
   const [accessToken, setAccessToken] =
     useState<string | null>(null);
 
-  const [districts, setDistricts] =
-    useState<FeatureCollection | null>(null);
+  const [
+    districts,
+    setDistricts,
+  ] = useState<
+    DistrictStatisticsCollection | null
+  >(null);
 
   const [stations, setStations] =
     useState<FeatureCollection | null>(null);
@@ -430,27 +482,23 @@ function App() {
     async function loadSpatialData() {
       try {
         const [
-          districtResponse,
+          districtData,
           stationResponseOne,
           stationResponseTwo,
         ] = await Promise.all([
-          fetch(DISTRICTS_URL),
+          getDistrictStatistics(),
           fetch(STATIONS_PAGE_ONE),
           fetch(STATIONS_PAGE_TWO),
         ]);
 
         if (
-          !districtResponse.ok ||
           !stationResponseOne.ok ||
           !stationResponseTwo.ok
         ) {
           throw new Error(
-            "A spatial-data request failed.",
+            "A charging-station request failed.",
           );
         }
-
-        const districtData =
-          (await districtResponse.json()) as FeatureCollection;
 
         const stationPageOne =
           (await stationResponseOne.json()) as FeatureCollection;
@@ -473,7 +521,7 @@ function App() {
         console.error(error);
 
         setDataError(
-          "Spatial data could not be loaded. Check pg_featureserv on port 9000.",
+          "Spatial data could not be loaded. Check the API and pg_featureserv.",
         );
       }
     }
@@ -938,7 +986,7 @@ function App() {
                 </p>
 
                 <p>
-                  Berlin districts loaded:{" "}
+                  Berlin districts analysed:{" "}
                   <strong>
                     {districtCount}
                   </strong>
@@ -956,6 +1004,65 @@ function App() {
             )}
           </section>
 
+          <section className="choropleth-legend">
+            <p className="section-label">
+              DISTRICT DENSITY
+            </p>
+
+            <h3>Stations per km²</h3>
+
+            <div className="density-item">
+              <span
+                style={{
+                  background: "#edf8fb",
+                }}
+              />
+              Less than 1.25
+            </div>
+
+            <div className="density-item">
+              <span
+                style={{
+                  background: "#b3cde3",
+                }}
+              />
+              1.25–1.74
+            </div>
+
+            <div className="density-item">
+              <span
+                style={{
+                  background: "#8c96c6",
+                }}
+              />
+              1.75–2.49
+            </div>
+
+            <div className="density-item">
+              <span
+                style={{
+                  background: "#8856a7",
+                }}
+              />
+              2.50–3.99
+            </div>
+
+            <div className="density-item">
+              <span
+                style={{
+                  background: "#810f7c",
+                }}
+              />
+              4.00 or more
+            </div>
+
+            <p className="method-note">
+              Density is calculated by
+              PostGIS as charging stations
+              divided by district area.
+            </p>
+          </section>
+
           <section>
             <p className="section-label">
               MAP LEGEND
@@ -964,11 +1071,6 @@ function App() {
             <div className="legend-item">
               <span className="legend-symbol station-symbol" />
               Existing charging station
-            </div>
-
-            <div className="legend-item">
-              <span className="legend-symbol district-symbol" />
-              Berlin district
             </div>
 
             <div className="legend-item">
@@ -1016,17 +1118,25 @@ function App() {
 
             {districts && (
               <GeoJSON
-                data={districts}
-                style={{
-                  color: "#0f8f89",
+                data={
+                  districts as unknown as FeatureCollection
+                }
+                style={(feature) => ({
+                  color: "#4c1d6f",
                   weight: 2,
                   opacity: 0.9,
-                  fillColor: "#18a39b",
-                  fillOpacity: 0.08,
+                  fillColor: getDensityColour(
+                    Number(
+                      feature?.properties
+                        ?.stations_per_km2 ??
+                        0,
+                    ),
+                  ),
+                  fillOpacity: 0.5,
                   bubblingMouseEvents: true,
-                }}
+                })}
                 onEachFeature={
-                  addDistrictPopup
+                  addDistrictStatisticsPopup
                 }
                 eventHandlers={{
                   click(event) {
@@ -1220,8 +1330,8 @@ function App() {
             </strong>
 
             <span>
-              Click the map to screen a
-              candidate location
+              District density and
+              candidate-site screening
             </span>
           </div>
         </section>

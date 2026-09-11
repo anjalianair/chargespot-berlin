@@ -632,3 +632,37 @@ body {
   color: #526f7e;
   font-size: 0.86rem;
 }
+.choropleth-legend {
+  padding: 20px;
+  border: 1px solid #ddd6fe;
+  border-radius: 14px;
+  background: #faf8ff;
+}
+
+.choropleth-legend h3 {
+  margin: 8px 0 14px;
+  color: #123650;
+}
+
+.density-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  color: #385667;
+  font-size: 0.9rem;
+}
+
+.density-item > span {
+  display: inline-block;
+  width: 30px;
+  height: 16px;
+  flex: 0 0 30px;
+  border: 1px solid #75558d;
+  border-radius: 3px;
+}
+
+.choropleth-legend .method-note {
+  margin-top: 16px;
+}
+
