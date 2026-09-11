@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import L, { type Layer } from "leaflet";
@@ -32,6 +33,7 @@ import "./App.css";
 import AuthPanel from "./components/AuthPanel";
 import ProposalManager from "./components/ProposalManager";
 import ProposalPanel from "./components/ProposalPanel";
+import StationFilters from "./components/StationFilters";
 
 import {
   findNearestStation,
@@ -85,12 +87,12 @@ function MapResizeHandler() {
       map.invalidateSize();
     };
 
-    const firstTimer = window.setTimeout(
+    const timerOne = window.setTimeout(
       resizeMap,
       100,
     );
 
-    const secondTimer = window.setTimeout(
+    const timerTwo = window.setTimeout(
       resizeMap,
       500,
     );
@@ -98,8 +100,8 @@ function MapResizeHandler() {
     window.addEventListener("resize", resizeMap);
 
     return () => {
-      window.clearTimeout(firstTimer);
-      window.clearTimeout(secondTimer);
+      window.clearTimeout(timerOne);
+      window.clearTimeout(timerTwo);
 
       window.removeEventListener(
         "resize",
@@ -164,7 +166,7 @@ function addStationPopup(
 ) {
   const properties = feature.properties ?? {};
 
-  const name =
+  const stationName =
     properties.name ?? "Charging station";
 
   const operator = properties.operator;
@@ -175,7 +177,10 @@ function addStationPopup(
   layer.bindPopup(`
     <div class="map-popup">
       <strong>
-        ${displayValue(name, "Charging station")}
+        ${displayValue(
+          stationName,
+          "Charging station",
+        )}
       </strong>
 
       <dl>
@@ -288,11 +293,6 @@ function analyseCandidate(
   const nearestDistanceMetres =
     nearestDistanceKilometres * 1000;
 
-  const classification = classifyCoverage(
-    stationsWithinOneKm,
-    nearestDistanceMetres,
-  );
-
   const generatedBuffer = buffer(
     candidatePoint,
     1,
@@ -308,7 +308,10 @@ function analyseCandidate(
       longitude,
       stationsWithinOneKm,
       nearestDistanceMetres,
-      classification,
+      classification: classifyCoverage(
+        stationsWithinOneKm,
+        nearestDistanceMetres,
+      ),
     },
 
     coverageBuffer:
@@ -330,13 +333,13 @@ function CandidateSelector({
 }: CandidateSelectorProps) {
   useMapEvents({
     click(event) {
-      const result = analyseCandidate(
-        event.latlng.lat,
-        event.latlng.lng,
-        stations,
+      onCandidateSelected(
+        analyseCandidate(
+          event.latlng.lat,
+          event.latlng.lng,
+          stations,
+        ),
       );
-
-      onCandidateSelected(result);
     },
   });
 
@@ -357,6 +360,16 @@ function App() {
 
   const [stations, setStations] =
     useState<FeatureCollection | null>(null);
+
+  const [
+    operatorSearch,
+    setOperatorSearch,
+  ] = useState("");
+
+  const [
+    selectedChargerType,
+    setSelectedChargerType,
+  ] = useState("all");
 
   const [candidate, setCandidate] =
     useState<CandidateAnalysis | null>(null);
@@ -512,6 +525,80 @@ function App() {
     };
   }, [accessToken]);
 
+  const chargerTypes = useMemo(() => {
+    if (!stations) {
+      return [];
+    }
+
+    const values = stations.features
+      .map((station) =>
+        String(
+          station.properties?.charger_type ??
+            "",
+        ).trim(),
+      )
+      .filter(
+        (value) =>
+          value !== "" &&
+          value.toLowerCase() !== "unknown",
+      );
+
+    return Array.from(
+      new Set(values),
+    ).sort();
+  }, [stations]);
+
+  const filteredStations =
+    useMemo<FeatureCollection | null>(() => {
+      if (!stations) {
+        return null;
+      }
+
+      const operatorTerm =
+        operatorSearch
+          .trim()
+          .toLowerCase();
+
+      return {
+        type: "FeatureCollection",
+
+        features: stations.features.filter(
+          (station) => {
+            const operator = String(
+              station.properties?.operator ??
+                "",
+            ).toLowerCase();
+
+            const chargerType = String(
+              station.properties
+                ?.charger_type ?? "",
+            );
+
+            const operatorMatches =
+              operatorTerm === "" ||
+              operator.includes(
+                operatorTerm,
+              );
+
+            const chargerMatches =
+              selectedChargerType ===
+                "all" ||
+              chargerType ===
+                selectedChargerType;
+
+            return (
+              operatorMatches &&
+              chargerMatches
+            );
+          },
+        ),
+      };
+    }, [
+      stations,
+      operatorSearch,
+      selectedChargerType,
+    ]);
+
   async function handleCandidateSelected(
     result: CandidateResult,
   ) {
@@ -565,6 +652,11 @@ function App() {
     setServerMessage("");
   }
 
+  function resetStationFilters() {
+    setOperatorSearch("");
+    setSelectedChargerType("all");
+  }
+
   function handleProposalCreated(
     proposal: ProposalFeature,
   ) {
@@ -606,6 +698,9 @@ function App() {
 
   const stationCount =
     stations?.features.length ?? 0;
+
+  const filteredStationCount =
+    filteredStations?.features.length ?? 0;
 
   const spatialDataLoaded =
     districts !== null &&
@@ -800,6 +895,25 @@ function App() {
             </p>
           )}
 
+          <StationFilters
+            operatorSearch={operatorSearch}
+            chargerType={
+              selectedChargerType
+            }
+            chargerTypes={chargerTypes}
+            totalCount={stationCount}
+            filteredCount={
+              filteredStationCount
+            }
+            onOperatorSearchChange={
+              setOperatorSearch
+            }
+            onChargerTypeChange={
+              setSelectedChargerType
+            }
+            onReset={resetStationFilters}
+          />
+
           <section>
             <p className="section-label">
               DATA STATUS
@@ -813,6 +927,13 @@ function App() {
                   Charging stations loaded:{" "}
                   <strong>
                     {stationCount.toLocaleString()}
+                  </strong>
+                </p>
+
+                <p>
+                  Stations displayed:{" "}
+                  <strong>
+                    {filteredStationCount.toLocaleString()}
                   </strong>
                 </p>
 
@@ -939,9 +1060,10 @@ function App() {
               />
             )}
 
-            {stations && (
+            {filteredStations && (
               <GeoJSON
-                data={stations}
+                key={`${operatorSearch}-${selectedChargerType}`}
+                data={filteredStations}
                 pointToLayer={(_, latlng) =>
                   L.circleMarker(latlng, {
                     radius: 4,
@@ -957,6 +1079,10 @@ function App() {
                 }
                 eventHandlers={{
                   click(event) {
+                    if (!stations) {
+                      return;
+                    }
+
                     void handleCandidateSelected(
                       analyseCandidate(
                         event.latlng.lat,

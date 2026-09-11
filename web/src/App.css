@@ -570,4 +570,65 @@ body {
   background: #7c3aed;
   box-shadow: 0 0 0 1px #7c3aed;
 }
+.station-filters {
+  padding: 22px;
+  border: 1px solid #c7dbea;
+  border-radius: 14px;
+  background: #f7fbfe;
+}
 
+.station-filters h3 {
+  margin: 8px 0 14px;
+  color: #123650;
+}
+
+.filter-form {
+  display: grid;
+  gap: 14px;
+}
+
+.filter-form label {
+  display: grid;
+  gap: 6px;
+  color: #385667;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.filter-form input,
+.filter-form select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid #aec5d5;
+  border-radius: 8px;
+  color: #123650;
+  background: #ffffff;
+  font: inherit;
+}
+
+.filter-form input:focus,
+.filter-form select:focus {
+  border-color: #1677a8;
+  outline: 3px solid rgb(22 119 168 / 14%);
+}
+
+.filter-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 16px 0 12px;
+  padding: 12px;
+  border-radius: 9px;
+  background: #e8f3f9;
+}
+
+.filter-summary strong {
+  color: #0c638d;
+  font-size: 1.35rem;
+}
+
+.filter-summary span {
+  color: #526f7e;
+  font-size: 0.86rem;
+}
