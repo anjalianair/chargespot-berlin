@@ -1,224 +1,186 @@
 # ChargeSpot Berlin
 
-ChargeSpot Berlin is a distributed Web GIS for exploring EV charging stations in Berlin and proposing locations for new charging infrastructure.
+ChargeSpot Berlin is a distributed Web GIS for analysing existing electric-vehicle charging coverage and screening candidate locations for additional charging infrastructure in Berlin.
 
-Users can view existing charging stations and Berlin districts, create an account, save proposed charging locations, manage their own proposals and find the nearest existing charging station.
+The system combines React, TypeScript, Leaflet, Turf.js, FastAPI, pg_featureserv, PostgreSQL/PostGIS, Nginx and Docker Compose.
 
-## Technology
+## Project purpose
 
-- PostgreSQL with PostGIS
-- pg_featureserv
+The application helps users explore existing charging infrastructure and perform preliminary supply-side screening for candidate charging locations.
+
+Users can:
+
+- Explore 1,705 charging stations.
+- Explore all 12 Berlin administrative districts.
+- Query stations by operator and charger type
+- Select a candidate location on the map.
+- Create a one-kilometre analysis buffer.
+- Count existing stations inside the buffer.
+- Calculate distance to the nearest station.
+- Compare client-side Turf.js and server-side PostGIS results.
+- Register and log in.
+- Save candidate locations permanently.
+- Reload, edit and delete their own proposals.
+- View district charging density using a choropleth map.
+## Analytical scope
+
+ChargeSpot Berlin provides preliminary, supply-side decision support for candidate-site screening.
+
+The current analysis measures:
+
+- Distance to the nearest existing charging station
+- Number of stations within one kilometre
+- Charging-station density by district
+- Spatial distribution of existing infrastructure
+
+The results identify locations that may deserve further investigation. A final infrastructure-planning decision would additionally require demand, traffic, electrical-grid capacity, land availability, accessibility and cost data.
+
+The application therefore presents coverage indicators rather than claiming to identify an objectively optimal construction site.
+## Architecture
+
+The project contains four Docker services:
+
+| Service | Technology | Port | Purpose |
+|---|---|---:|---|
+| `db` | PostgreSQL + PostGIS | 5432 | Spatial database |
+| `features` | pg_featureserv | 9000 | Read-only OGC-style feature service |
+| `api` | FastAPI | 8000 | Authentication, proposal CRUD and spatial analysis |
+| `web` | React + Nginx | 5173 | Web client |
+
+The web client requests public station and district data from the spatial services. Authenticated write operations and server-side analyses are handled by FastAPI.
+
+## Main technologies
+
+### Web client
+
+- React
+- TypeScript
+- Leaflet
+- React-Leaflet
+- Turf.js
+- Vite
+- Nginx
+
+### Backend
+
 - FastAPI
-- React, TypeScript and Leaflet frontend
+- Python
+- psycopg
+- JWT authentication
+- Password hashing
+
+### Spatial database
+
+- PostgreSQL
+- PostGIS
+- EPSG:25833 for stored spatial data
+- EPSG:4326 for web-map GeoJSON
+
+### Deployment
+
+- Docker
 - Docker Compose
+
+## Database schema
+
+The database contains the following main tables:
+
+### `app_user`
+
+Stores registered application users.
+
+Important fields:
+
+- `id`
+- `display_name`
+- `email`
+- `password_hash`
+- `created_at`
+
+### `charging_station`
+
+Stores imported existing charging stations as PostGIS point geometries.
+
+Important fields:
+
+- `id`
+- `source_id`
+- `name`
+- `operator`
+- `charger_type`
+- `power_kw`
+- `address`
+- `geom`
+
+### `district`
+
+Stores the 12 Berlin administrative districts as PostGIS polygon geometries.
+
+Important fields:
+
+- `id`
+- `name`
+- `geom`
+
+### `site_proposal`
+
+Stores user-created candidate charging locations.
+
+Important fields:
+
+- `id`
+- `owner_id`
+- `title`
+- `justification`
+- `suggested_charger_type`
+- `suggested_power_kw`
+- `status`
+- `suitability_score`
+- `analysis_result`
+- `geom`
+- `created_at`
+- `updated_at`
 
 ## Spatial data
 
-- 1,705 OpenStreetMap charging stations
-- 12 official Berlin districts
-- Database coordinate system: EPSG:25833
-- Web/GeoJSON coordinate system: EPSG:4326
+The project contains:
 
-## Project structure
+- 1,705 charging-station point features
+- 12 Berlin district polygon features
 
-```text
-chargespot-berlin/
-├── api/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── analysis.py
-│   │   ├── auth.py
-│   │   ├── main.py
-│   │   └── proposals.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── database/
-│   ├── data/
-│   │   ├── berlin_districts.geojson
-│   │   └── charging_stations.geojson
-│   ├── import_charging_stations.sql
-│   ├── import_districts.sql
-│   ├── public_views.sql
-│   └── schema.sql
-├── web/
-├── .env.example
-├── .gitignore
-├── compose.yaml
-└── README.md
-```
+The source GeoJSON files are mounted into the PostGIS container. Database initialization scripts automatically create the schema, import the data and create public API views when a new database volume is created.
 
-## Requirements
+## Authentication
 
-- Git
-- Docker Desktop
-- Docker Compose
+The FastAPI backend provides JWT-based authentication.
 
-Node.js is required only when running the frontend outside Docker.
+Users can:
 
-## Start the application
+- Register
+- Log in
+- Restore an existing browser session
+- Retrieve their account information
+- Log out
 
-Clone the repository and enter the project folder.
+Passwords are stored as password hashes rather than readable plain-text passwords.
 
-On Windows PowerShell:
+## Proposal ownership
 
-```powershell
-Copy-Item .env.example .env
-docker compose up -d --build
-```
+Each proposal contains an `owner_id`.
 
-Check the services:
+The backend ensures that users can:
 
-```powershell
-docker compose ps
-```
+- Retrieve their own proposals
+- Update only their own proposals
+- Delete only their own proposals
 
-During the first startup, PostgreSQL automatically creates the schema, imports the spatial data and creates the public views.
+A user cannot modify another user’s contribution.
 
-Do not run `docker compose down -v` unless you intentionally want to delete the database volume.
+## Berlin boundary validation
 
-## Service URLs
+Before a proposal is created, PostGIS checks whether the candidate point is covered by one of the Berlin district polygons.
 
-| Service | URL |
-|---|---|
-| FastAPI documentation | http://127.0.0.1:8000/docs |
-| API health check | http://127.0.0.1:8000/api/health |
-| pg_featureserv | http://127.0.0.1:9000 |
-| PostgreSQL | localhost:5432 |
-| Frontend | http://localhost:5173 |
-
-The frontend URL becomes available after the frontend service is implemented.
-
-## Public GeoJSON data
-
-Charging stations:
+Locations outside Berlin are rejected with:
 
 ```text
-http://127.0.0.1:9000/collections/api.charging_station_public/items.json?limit=2000
-```
-
-Berlin districts:
-
-```text
-http://127.0.0.1:9000/collections/api.district_public/items.json?limit=12
-```
-
-## Authentication API
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| POST | `/api/auth/register` | Create an account |
-| POST | `/api/auth/login` | Log in and receive a JWT |
-| GET | `/api/auth/me` | Retrieve the logged-in user |
-
-Protected requests require:
-
-```text
-Authorization: Bearer <access_token>
-```
-
-Passwords are stored as secure hashes.
-
-## Proposal API
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/api/proposals/mine` | Retrieve the current user’s proposals |
-| POST | `/api/proposals` | Create a proposal |
-| PATCH | `/api/proposals/{proposal_id}` | Update an owned proposal |
-| DELETE | `/api/proposals/{proposal_id}` | Delete an owned proposal |
-
-Proposal endpoints require authentication. Users cannot update or delete proposals belonging to another user.
-
-## Nearest-station analysis
-
-Endpoint:
-
-```text
-POST /api/analysis/nearest
-```
-
-Example request:
-
-```json
-{
-  "longitude": 13.4132,
-  "latitude": 52.5219
-}
-```
-
-PostGIS finds the nearest charging station and calculates the distance in metres.
-
-## Coordinate rules
-
-GeoJSON coordinates use:
-
-```text
-[longitude, latitude]
-```
-
-Example:
-
-```json
-{
-  "type": "Point",
-  "coordinates": [13.4132, 52.5219]
-}
-```
-
-The API transforms coordinates to EPSG:25833 for metric analysis and returns results in EPSG:4326.
-
-Leaflet commonly uses `[latitude, longitude]`, so the frontend must convert the order when creating GeoJSON.
-
-## Verified backend features
-
-- PostGIS database and spatial indexes
-- 1,705 charging stations
-- 12 Berlin districts
-- Public GeoJSON layers
-- Registration and login
-- JWT authentication
-- Secure password hashing
-- Proposal creation, retrieval, updating and deletion
-- Cross-user ownership protection
-- Permanent storage after container restart
-- Nearest-station PostGIS analysis
-- Coordinate validation
-- Missing-proposal handling
-- Automatic database initialization
-- Docker environment configuration
-
-## Frontend requirements
-
-The frontend should contain:
-
-- OpenStreetMap basemap
-- Leaflet map
-- Charging-station and district layers
-- Interactive legend
-- Popups and filters
-- Registration and login forms
-- Proposal drawing and submission
-- Display, editing and deletion of personal proposals
-- Client-side Turf.js analysis
-- Server analysis results
-- Responsive layout
-- Frontend Dockerfile
-
-## Mandatory demonstration
-
-The final system should demonstrate that a user can:
-
-1. Navigate the map.
-2. View and query spatial data.
-3. Register and log in.
-4. Create and save a proposal.
-5. Retrieve the proposal after revisiting.
-6. Edit or delete their own proposal.
-7. Remain unable to edit another user’s proposal.
-8. Run client-side spatial analysis.
-9. Run server-side PostGIS analysis.
-10. Start the complete application with Docker Compose.
-
-## Data source
-
-Charging-station and administrative-boundary data were obtained from OpenStreetMap for this educational project.
+Candidate location must be inside a Berlin district
