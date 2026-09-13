@@ -1,218 +1,320 @@
 # ChargeSpot Berlin
 
-ChargeSpot Berlin is a distributed Web GIS for analysing existing electric-vehicle charging coverage and screening candidate locations for additional charging infrastructure in Berlin.
+ChargeSpot Berlin is a distributed Web GIS for analysing existing electric-vehicle charging coverage and screening possible locations for additional charging infrastructure in Berlin.
 
 The system combines React, TypeScript, Leaflet, Turf.js, FastAPI, pg_featureserv, PostgreSQL/PostGIS, Nginx and Docker Compose.
 
 ## Project purpose
 
-The application helps users explore existing charging infrastructure and perform preliminary supply-side screening for candidate charging locations.
+The project goes beyond displaying existing charging stations. It allows users to select a possible new charging location and examine the surrounding infrastructure.
+
+The application provides preliminary supply-side screening rather than claiming to identify an objectively optimal construction site.
+
+## Main features
 
 Users can:
 
-- Explore 1,705 charging stations.
-- Explore all 12 Berlin administrative districts.
-- Query stations by operator and charger type
-- Select a candidate location on the map.
-- Create a one-kilometre analysis buffer.
-- Count existing stations inside the buffer.
-- Calculate distance to the nearest station.
-- Compare client-side Turf.js and server-side PostGIS results.
-- Register and log in.
-- Save candidate locations permanently.
-- Reload, edit and delete their own proposals.
-- View district charging density using a choropleth map.
-## Analytical scope
+* Explore 1,705 existing charging stations.
+* Explore all 12 Berlin administrative districts.
+* Inspect individual charging-station attributes.
+* Filter stations by operator and charger type.
+* Select a candidate location on the map.
+* Create a one-kilometre assessment area.
+* Count stations within the assessment area.
+* Calculate the distance to the nearest existing station.
+* Compare client-side Turf.js and server-side PostGIS results.
+* View charging-station density by district.
+* Register and log in.
+* Save, edit and delete their own candidate proposals.
+* Reload saved proposals after refreshing the application.
 
-ChargeSpot Berlin provides preliminary, supply-side decision support for candidate-site screening.
+PostGIS also validates that a proposal is located inside one of the Berlin district polygons.
 
-The current analysis measures:
+## Spatial analysis
 
-- Distance to the nearest existing charging station
-- Number of stations within one kilometre
-- Charging-station density by district
-- Spatial distribution of existing infrastructure
+The application calculates:
 
-The results identify locations that may deserve further investigation. A final infrastructure-planning decision would additionally require demand, traffic, electrical-grid capacity, land availability, accessibility and cost data.
+* Straight-line distance to the nearest charging station.
+* Number of charging stations within one kilometre.
+* Charging-station density per square kilometre for each district.
+* Density rank among Berlin’s 12 districts.
+* Spatial containment within the Berlin district boundaries.
 
-The application therefore presents coverage indicators rather than claiming to identify an objectively optimal construction site.
+The nearest-station calculation is a direct spatial distance rather than a road-network or shortest-path calculation.
+
 ## Architecture
 
-The project contains four Docker services:
+The application contains four Docker services:
 
-| Service | Technology | Port | Purpose |
-|---|---|---:|---|
-| `db` | PostgreSQL + PostGIS | 5432 | Spatial database |
-| `features` | pg_featureserv | 9000 | Read-only OGC-style feature service |
-| `api` | FastAPI | 8000 | Authentication, proposal CRUD and spatial analysis |
-| `web` | React + Nginx | 5173 | Web client |
+| Service    | Technology             | Port | Purpose                                        |
+| ---------- | ---------------------- | ---: | ---------------------------------------------- |
+| `db`       | PostgreSQL and PostGIS | 5432 | Spatial database and GIS calculations          |
+| `features` | pg_featureserv         | 9000 | Read-only spatial feature service              |
+| `api`      | FastAPI                | 8000 | Authentication, proposals and spatial analysis |
+| `web`      | React and Nginx        | 5173 | Interactive web application                    |
 
-The web client requests public station and district data from the spatial services. Authenticated write operations and server-side analyses are handled by FastAPI.
+Public station and district features are delivered through pg_featureserv. Authentication, protected proposal operations and server-side spatial analysis are handled by FastAPI.
 
-## Main technologies
+## Requirements
 
-### Web client
+Install and start Docker Desktop before running the project.
 
-- React
-- TypeScript
-- Leaflet
-- React-Leaflet
-- Turf.js
-- Vite
-- Nginx
+Git is required when cloning the repository.
 
-### Backend
+## Quick start on Windows
 
-- FastAPI
-- Python
-- psycopg
-- JWT authentication
-- Password hashing
+Clone the repository:
 
-### Spatial database
+```powershell
+git clone https://github.com/anjalianair/chargespot-berlin.git
+cd chargespot-berlin
+```
 
-- PostgreSQL
-- PostGIS
-- EPSG:25833 for stored spatial data
-- EPSG:4326 for web-map GeoJSON
+Run the setup script:
 
-### Deployment
+```powershell
+.\SetupChargeSpot.bat
+```
 
-- Docker
-- Docker Compose
+The setup script:
 
-## Database schema
+1. Checks whether Docker Desktop is running.
+2. Creates `.env` from `.env.example` when required.
+3. Builds and starts all Docker services.
+4. Waits for the API health check.
+5. Opens the web application.
 
-The database contains the following main tables:
+The first startup may take a few minutes while Docker downloads and builds the required images.
 
-### `app_user`
+## Manual startup
 
-Stores registered application users.
+Create the local environment file:
 
-Important fields:
+```powershell
+Copy-Item .env.example .env
+```
 
-- `id`
-- `display_name`
-- `email`
-- `password_hash`
-- `created_at`
+If `.env` already exists, this step is not required.
 
-### `charging_station`
+Build and start the application:
 
-Stores imported existing charging stations as PostGIS point geometries.
+```powershell
+docker compose up -d --build
+```
 
-Important fields:
+Check the services:
 
-- `id`
-- `source_id`
-- `name`
-- `operator`
-- `charger_type`
-- `power_kw`
-- `address`
-- `geom`
+```powershell
+docker compose ps
+```
 
-### `district`
+## Application links
 
-Stores the 12 Berlin administrative districts as PostGIS polygon geometries.
+After startup, open:
 
-Important fields:
+* Web application: http://127.0.0.1:5173
+* API documentation: http://127.0.0.1:8000/docs
+* Spatial feature service: http://127.0.0.1:9000
+* API health endpoint: http://127.0.0.1:8000/api/health
 
-- `id`
-- `name`
-- `geom`
+These addresses become available on the computer where the Docker application is running.
 
-### `site_proposal`
+## Using the application
 
-Stores user-created candidate charging locations.
+### Explore charging infrastructure
 
-Important fields:
+The map displays the existing charging stations and Berlin district boundaries.
 
-- `id`
-- `owner_id`
-- `title`
-- `justification`
-- `suggested_charger_type`
-- `suggested_power_kw`
-- `status`
-- `suitability_score`
-- `analysis_result`
-- `geom`
-- `created_at`
-- `updated_at`
+Click a station marker to inspect available information such as its operator, charger type, power and address.
+
+The station filters allow the displayed infrastructure to be queried by operator and charger type.
+
+### Analyse a candidate location
+
+Click inside Berlin to select a candidate location.
+
+The application displays:
+
+* A candidate marker.
+* A one-kilometre assessment area.
+* The number of stations within one kilometre.
+* The nearest client-side distance.
+* The authoritative PostGIS distance after login.
+* The nearest station’s name when available.
+
+Small differences between the Turf.js and PostGIS distance values are expected because the calculations use different spatial representations. The PostGIS result is treated as the authoritative metric value.
+
+### Create an account
+
+Select **Register** in the web application and enter a display name, valid email address and password.
+
+No demonstration password is stored in the repository.
+
+### Save a proposal
+
+After logging in and selecting a candidate location, enter:
+
+* Proposal title
+* Justification
+* Suggested charger type
+* Suggested charging power
+* Proposal status
+
+Saved proposals remain available after the application is refreshed. Users can update or delete their own proposals but cannot modify proposals belonging to another account.
+
+### View district statistics
+
+Click a district to view:
+
+* District area
+* Number of charging stations
+* Stations per square kilometre
+* Density rank
+* Number of saved proposals
 
 ## Spatial data
 
-The project contains:
+The repository includes:
 
-- 1,705 charging-station point features
-- 12 Berlin district polygon features
+* 1,705 charging-station point features.
+* 12 Berlin administrative-district polygons.
 
-The source GeoJSON files are mounted into the PostGIS container. Database initialization scripts automatically create the schema, import the data and create public API views when a new database volume is created.
+Spatial data is stored and analysed in EPSG:25833, which supports distance calculations in metres and area calculations in square metres.
 
-## Authentication
+Features are transformed to EPSG:4326 before being delivered to the browser as GeoJSON.
 
-The FastAPI backend provides JWT-based authentication.
+When a new database volume is created, the initialization scripts automatically create the schema, import both datasets and create the public API views.
 
-Users can:
-
-- Register
-- Log in
-- Restore an existing browser session
-- Retrieve their account information
-- Log out
-
-Passwords are stored as password hashes rather than readable plain-text passwords.
-
-## Proposal ownership
-
-Each proposal contains an `owner_id`.
-
-The backend ensures that users can:
-
-- Retrieve their own proposals
-- Update only their own proposals
-- Delete only their own proposals
-
-A user cannot modify another user’s contribution.
-
-## Berlin boundary validation
-
-Before a proposal is created, PostGIS checks whether the candidate point is covered by one of the Berlin district polygons.
-
-Locations outside Berlin are rejected with:
+## Project structure
 
 ```text
-Candidate location must be inside a Berlin district
+chargespot-berlin/
+├── api/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── auth.py
+│   │   ├── proposals.py
+│   │   └── analysis.py
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── database/
+│   ├── data/
+│   │   ├── charging_stations.geojson
+│   │   └── berlin_districts.geojson
+│   ├── schema.sql
+│   ├── import_charging_stations.sql
+│   ├── import_districts.sql
+│   └── public_views.sql
+│
+├── web/
+│   ├── public/
+│   │   ├── favicon.svg
+│   │   └── icons.svg
+│   ├── src/
+│   │   ├── assets/
+│   │   ├── components/
+│   │   │   ├── AuthPanel.tsx
+│   │   │   ├── ProposalManager.tsx
+│   │   │   ├── ProposalPanel.tsx
+│   │   │   └── StationFilters.tsx
+│   │   ├── api.ts
+│   │   ├── App.tsx
+│   │   ├── App.css
+│   │   ├── index.css
+│   │   └── main.tsx
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── package.json
+│   ├── package-lock.json
+│   └── vite.config.ts
+│
+├── .env.example
+├── .gitignore
+├── compose.yaml
+├── SetupChargeSpot.bat
+└── README.md
+```
+
+## Stop the application
+
+```powershell
+docker compose down
+```
+
+This stops the containers but preserves the PostGIS data volume.
+
+## Troubleshooting
+
+Confirm that Docker Desktop is running:
+
+```powershell
+docker version
+```
+
+Check all services:
+
+```powershell
+docker compose ps -a
+```
+
+Inspect recent service errors:
+
+```powershell
+docker compose logs --tail 100
+```
+
+## Scope and limitations
+
+ChargeSpot Berlin is a preliminary supply-side screening tool.
+
+It does not currently model:
+
+* Charging demand
+* Electric-vehicle ownership
+* Traffic volume
+* Road-network travel time
+* Electrical-grid capacity
+* Land ownership
+* Parking availability
+* Accessibility
+* Construction cost
+
+A large distance from an existing station or a low district station density indicates sparse mapped infrastructure. It does not by itself prove unmet demand or construction feasibility.
+
 ## Data sources and attribution
 
 ### Charging stations
 
-The charging-station dataset contains 1,705 point features derived from
-OpenStreetMap. Stations were identified using the
-`amenity=charging_station` tag and retain selected OpenStreetMap attributes,
-including feature identifiers, operators and socket information.
+The charging-station dataset contains 1,705 point features derived from OpenStreetMap.
 
-Source: © OpenStreetMap contributors  
-Licence: Open Data Commons Open Database License (ODbL)  
-https://www.openstreetmap.org/copyright  
+Stations were identified using the `amenity=charging_station` tag and retain selected OpenStreetMap attributes such as feature identifiers, operators and socket information.
+
+Source: © OpenStreetMap contributors
+Licence: Open Data Commons Open Database License
+https://www.openstreetmap.org/copyright
 Accessed: September 2026
 
 ### Berlin administrative districts
 
-The district dataset contains the 12 Berlin administrative districts derived
-from OpenStreetMap administrative-boundary relations. The source features
-include OpenStreetMap relation identifiers and the `ref:DE-BE:BEZ` district
-reference.
+The district dataset contains the 12 Berlin administrative districts derived from OpenStreetMap administrative-boundary relations.
 
-Source: © OpenStreetMap contributors  
-Licence: Open Data Commons Open Database License (ODbL)  
-https://www.openstreetmap.org/copyright  
+The features retain OpenStreetMap relation identifiers and the `ref:DE-BE:BEZ` district reference.
+
+Source: © OpenStreetMap contributors
+Licence: Open Data Commons Open Database License
+https://www.openstreetmap.org/copyright
 Accessed: September 2026
 
 ### Basemap
 
 The interactive basemap uses OpenStreetMap map tiles.
 
-Basemap: © OpenStreetMap contributors  
+Basemap: © OpenStreetMap contributors
 https://www.openstreetmap.org/copyright
+
+## Repository
+
+https://github.com/anjalianair/chargespot-berlin
+
