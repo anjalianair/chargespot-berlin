@@ -184,3 +184,35 @@ Locations outside Berlin are rejected with:
 
 ```text
 Candidate location must be inside a Berlin district
+## Data sources and attribution
+
+### Charging stations
+
+The charging-station dataset contains 1,705 point features derived from
+OpenStreetMap. Stations were identified using the
+`amenity=charging_station` tag and retain selected OpenStreetMap attributes,
+including feature identifiers, operators and socket information.
+
+Source: © OpenStreetMap contributors  
+Licence: Open Data Commons Open Database License (ODbL)  
+https://www.openstreetmap.org/copyright  
+Accessed: September 2026
+
+### Berlin administrative districts
+
+The district dataset contains the 12 Berlin administrative districts derived
+from OpenStreetMap administrative-boundary relations. The source features
+include OpenStreetMap relation identifiers and the `ref:DE-BE:BEZ` district
+reference.
+
+Source: © OpenStreetMap contributors  
+Licence: Open Data Commons Open Database License (ODbL)  
+https://www.openstreetmap.org/copyright  
+Accessed: September 2026
+
+### Basemap
+
+The interactive basemap uses OpenStreetMap map tiles.
+
+Basemap: © OpenStreetMap contributors  
+https://www.openstreetmap.org/copyright
